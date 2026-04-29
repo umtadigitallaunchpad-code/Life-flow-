@@ -1,0 +1,48 @@
+{
+  "entities": {
+    "Donor": {
+      "title": "Donor",
+      "description": "A donor profile, can be the user or a family member.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "name": { "type": "string", "description": "Full name of the donor" },
+        "bloodGroup": { "type": "string", "description": "A+, O-, etc" },
+        "location": { "type": "string" },
+        "lat": { "type": "number" },
+        "lng": { "type": "number" },
+        "phone": { "type": "string" },
+        "availableForDonation": { "type": "boolean" },
+        "relation": { "type": "string", "description": "Self, Family Member, etc." }
+      },
+      "required": ["id", "ownerId", "name"]
+    },
+    "EmergencyRequest": {
+      "title": "Emergency Request",
+      "description": "Urgent request for blood.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "requesterId": { "type": "string" },
+        "bloodGroup": { "type": "string" },
+        "location": { "type": "string" },
+        "lat": { "type": "number" },
+        "lng": { "type": "number" },
+        "status": { "type": "string", "enum": ["active", "fulfilled", "cancelled"] },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "requesterId", "bloodGroup", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/donors/{donorId}": {
+      "schema": { "$ref": "#/entities/Donor" },
+      "description": "Stores all potential donators"
+    },
+    "/emergency_requests/{requestId}": {
+      "schema": { "$ref": "#/entities/EmergencyRequest" },
+      "description": "Stores active emergency requests"
+    }
+  }
+}

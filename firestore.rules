@@ -1,0 +1,91 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() { return request.auth != null; }
+    function isVerifiedUser() { return isSignedIn() && request.auth.token.email_verified == true; }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    
+    function isValidId(id) { 
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
+    }
+
+    function isValidDonor(data) {
+      return data.size() >= 3 && data.size() <= 10
+        && data.keys().hasAll(['id', 'ownerId', 'name'])
+        && data.id is string && data.id.size() <= 128
+        && data.ownerId is string && data.ownerId == request.auth.uid
+        && data.name is string && data.name.size() <= 200
+        && (data.get('bloodGroup', '') is string)
+        && (data.get('location', '') is string)
+        && (data.get('lat', 0) is number)
+        && (data.get('lng', 0) is number)
+        && (data.get('phone', '') is string)
+        && (data.get('relation', '') is string)
+        && (data.get('availableForDonation', false) is bool);
+    }
+
+    function isValidEmergencyRequest(data) {
+      return data.size() >= 5 && data.size() <= 9
+        && data.keys().hasAll(['id', 'requesterId', 'bloodGroup', 'status', 'createdAt'])
+        && data.id is string && data.id.size() <= 128
+        && data.requesterId is string && data.requesterId == request.auth.uid
+        && data.bloodGroup is string && data.bloodGroup.size() <= 10
+        && data.status is string && data.status.matches('^(active|fulfilled|cancelled)$')
+        && data.createdAt is timestamp
+        && data.get('location', '') is string
+        && (data.get('contact', '') is string)
+        && (data.get('lat', 0) is number)
+        && (data.get('lng', 0) is number);
+    }
+
+    match /donors/{donorId} {
+      allow get: if isVerifiedUser();
+      
+      allow list: if isVerifiedUser(); 
+
+      allow create: if isVerifiedUser() 
+                    && isValidId(donorId)
+                    && incoming().id == donorId
+                    && incoming().ownerId == request.auth.uid
+                    && isValidDonor(incoming());
+
+      allow update: if isVerifiedUser()
+                    && isValidId(donorId)
+                    && existing().ownerId == request.auth.uid
+                    && isValidDonor(incoming())
+                    && incoming().ownerId == existing().ownerId
+                    && incoming().id == existing().id
+                    && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'bloodGroup', 'location', 'lat', 'lng', 'phone', 'availableForDonation', 'relation']);
+                    
+      allow delete: if isVerifiedUser() 
+                    && existing().ownerId == request.auth.uid;
+    }
+
+    match /emergency_requests/{requestId} {
+      // Anyone verified can read emergency requests (they are public cries for help)
+      allow get: if isVerifiedUser() && isValidId(requestId);
+      allow list: if isVerifiedUser() && resource.data.status == 'active';
+
+      allow create: if isVerifiedUser()
+                    && isValidId(requestId)
+                    && isValidEmergencyRequest(incoming())
+                    && incoming().createdAt == request.time;
+      
+      allow update: if isVerifiedUser()
+                    && isValidId(requestId)
+                    && existing().requesterId == request.auth.uid
+                    && isValidEmergencyRequest(incoming())
+                    && incoming().requesterId == existing().requesterId
+                    && incoming().createdAt == existing().createdAt
+                    && incoming().id == existing().id
+                    && incoming().diff(existing()).affectedKeys().hasOnly(['status'])
+                    // If it was already terminal, no further updates unless admin (omitted for scope)
+                    && existing().status == 'active';
+    }
+  }
+}
